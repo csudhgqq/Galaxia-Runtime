@@ -1,0 +1,1 @@
+export { GalaxyMaterial, GalaxyMaterialOptions, ShaderSources } from './GalaxyMaterial';

@@ -1,0 +1,32 @@
+{
+  "name": "galaxia-three",
+  "version": "1.0.0",
+  "description": "Three.js galaxy visualization library - ported from Unity Galaxia Runtime",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "threejs",
+    "three",
+    "galaxy",
+    "visualization",
+    "particles",
+    "webgl",
+    "3d"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "three": "^0.160.0",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxia Module Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: white; font-family: monospace; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border: 1px solid red;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Loading Galaxia Module...</div>
+    <div id="error"></div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.skypack.dev/three@0.160.0",
+            "three/": "https://cdn.skypack.dev/three@0.160.0/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        
+        const info = document.getElementById('info');
+        const errorDiv = document.getElementById('error');
+        
+        function showError(msg) {
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = msg;
+            console.error(msg);
+        }
+        
+        try {
+            // Scene setup
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 50, 150);
+            
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            const controls = new OrbitControls(camera, renderer.domElement);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+            scene.add(ambientLight);
+            
+            // Grid helper
+            const grid = new THREE.GridHelper(200, 20, 0x444444, 0x222222);
+            scene.add(grid);
+            
+            // Create a mock Galaxy-like system
+            const particleCount = 50000;
+            const geometry = new THREE.BufferGeometry();
+            
+            // Attributes
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 4);
+            const sizes = new Float32Array(particleCount);
+            const rotations = new Float32Array(particleCount);
+            const sheetPositions = new Float32Array(particleCount);
+            
+            // Generate spiral galaxy
+            for (let i = 0; i < particleCount; i++) {
+                const radius = Math.random() * 50;
+                const spinAngle = radius * 0.2;
+                const branchAngle = (i % 3) * 2 * Math.PI / 3;
+                
+                positions[i * 3] = Math.cos(branchAngle + spinAngle) * radius + (Math.random() - 0.5) * 5;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+                positions[i * 3 + 2] = Math.sin(branchAngle + spinAngle) * radius + (Math.random() - 0.5) * 5;
+                
+                // Color gradient
+                const t = radius / 50;
+                colors[i * 4] = 1.0 - t * 0.5;
+                colors[i * 4 + 1] = 0.6 + t * 0.3;
+                colors[i * 4 + 2] = 0.3 + t * 0.7;
+                colors[i * 4 + 3] = 1.0;
+                
+                sizes[i] = 0.1;
+                rotations[i] = Math.random() * Math.PI * 2;
+                sheetPositions[i] = 0;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('particleColor', new THREE.BufferAttribute(colors, 4));
+            geometry.setAttribute('particleSize', new THREE.BufferAttribute(sizes, 1));
+            geometry.setAttribute('particleRotation', new THREE.BufferAttribute(rotations, 1));
+            geometry.setAttribute('sheetPosition', new THREE.BufferAttribute(sheetPositions, 1));
+            
+            // Create texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            // Shader from GalaxyMaterial (fixed version)
+            const vertexShader = `
+                attribute vec4 particleColor;
+                attribute float particleSize;
+                attribute float particleRotation;
+                attribute float sheetPosition;
+                
+                uniform float maxScreenSize;
+                uniform float time;
+                
+                varying vec4 vColor;
+                varying float vRotation;
+                varying float vSheetPosition;
+                
+                void main() {
+                    vColor = particleColor;
+                    vRotation = particleRotation;
+                    vSheetPosition = sheetPosition;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    float screenDepth = -mvPosition.z;
+                    float size = particleSize * 10.0;
+                    
+                    if (maxScreenSize > 0.0) {
+                        size = min(size, screenDepth * maxScreenSize);
+                    }
+                    
+                    gl_PointSize = size * (300.0 / screenDepth);
+                    gl_PointSize = max(gl_PointSize, 1.0);
+                    
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `;
+            
+            const fragmentShader = `
+                uniform sampler2D mainTexture;
+                uniform vec4 overlayColor;
+                uniform float textureSheetPower;
+                uniform bool hasTexture;
+                
+                varying vec4 vColor;
+                varying float vRotation;
+                varying float vSheetPosition;
+                
+                vec2 rotate2d(vec2 uv, float angle) {
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    vec2 centered = uv - 0.5;
+                    return vec2(
+                        c * centered.x - s * centered.y,
+                        s * centered.x + c * centered.y
+                    ) + 0.5;
+                }
+                
+                void main() {
+                    vec2 pointCoord = gl_PointCoord;
+                    vec2 rotatedCoord = rotate2d(pointCoord, vRotation);
+                    
+                    vec4 texColor;
+                    
+                    if (hasTexture) {
+                        texColor = texture2D(mainTexture, rotatedCoord);
+                    } else {
+                        vec2 center = pointCoord - 0.5;
+                        float dist = length(center);
+                        if (dist > 0.5) discard;
+                        
+                        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+                        texColor = vec4(1.0, 1.0, 1.0, alpha);
+                    }
+                    
+                    vec4 finalColor = texColor * vColor * overlayColor;
+                    
+                    if (finalColor.a < 0.01) {
+                        discard;
+                    }
+                    
+                    gl_FragColor = finalColor;
+                }
+            `;
+            
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    mainTexture: { value: texture },
+                    textureSheetPower: { value: 1 },
+                    maxScreenSize: { value: 0.1 },
+                    overlayColor: { value: new THREE.Vector4(1, 1, 1, 1) },
+                    time: { value: 0 },
+                    hasTexture: { value: true }
+                },
+                vertexShader,
+                fragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true
+            });
+            
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+            
+            // Animation
+            const clock = new THREE.Clock();
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                const delta = clock.getDelta();
+                material.uniforms.time.value += delta;
+                
+                points.rotation.y += delta * 0.1;
+                
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            
+            animate();
+            
+            // Update info
+            info.innerHTML = `
+                Galaxia-like Test<br>
+                Particles: ${particleCount.toLocaleString()}<br>
+                Shader: Custom (Fixed)<br>
+                Texture: ${texture ? 'Yes' : 'No'}<br>
+                <br>
+                Controls:<br>
+                - Left Mouse: Rotate<br>
+                - Right Mouse: Pan<br>
+                - Scroll: Zoom
+            `;
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+        } catch (error) {
+            showError(`Error: ${error.message}\n\nStack: ${error.stack}`);
+        }
+    </script>
+</body>
+</html>
